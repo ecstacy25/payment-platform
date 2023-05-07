@@ -1,42 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
+import Loader from '../src/component/loader/loader'; 
 
 function App() {
   const [banks, setBanks] = useState([]);
   const [bankCode, setBankCode] = useState('');
-  const [bankName, setBankName] = useState('');
+  const [isLoader, setLoader] = useState(false);
+  const [bankName, setBankName] = useState(''); 
   const [accountNumber, setAccountNumber] = useState('');
   const [amount, setAmount] = useState('');
   const [narration, setNarration] = useState('');
   const [payments, setPayments] = useState([]);
 
-  const getBankDetails = async () => {
-    try {
-      const response = await axios.get('https://api.paystack.co/transaction/verify/:reference', {
-        headers: {
-          Authorization: 'Bearer sk_test_0880c1a9a5273248688de6d7bec39a89996d2254',
-        },
-      });
-      setAccountNumber(response.data.data.account_number);
-      setBankName(response.data.data.bank_name);
-      return response.data.data;
-    } catch (error) {
-      console.error(error);
-      alert('Failed to resolve account number');
-    }
-  };
 
-  const resolveAccount = async (event) => {
-    event.preventDefault();
-    if (bankCode === '' || accountNumber === '') {
-      alert('Please enter a bank code and account number');
-      return;
-    }
-    await getBankDetails();
-  };
 
-  useEffect(() => {
+  console.log("bank=======",bankName)
+
+  const getBankDetails = (detail) => {
+    const data = detail.split("__");
+    setBankCode(data[0]);
+    setBankName(data[1]);
+  }
+  useEffect(()=>{
+    setLoader(true);
     const fetchBanks = async () => {
       try {
         const response = await axios.get('https://api.paystack.co/bank', {
@@ -44,43 +31,55 @@ function App() {
             Authorization: 'Bearer sk_test_0880c1a9a5273248688de6d7bec39a89996d2254',
           },
         });
+
+        setLoader(false);
         setBanks(response.data.data);
       } catch (error) {
+        setLoader(false);
         console.error(error);
-        alert('Failed to fetch banks');
       }
     };
-    fetchBanks();
-  }, []);
+    fetchBanks()
+  }, [])
+  
+  const fetchPayments = async (account) => {
+    try {
+      const response = await axios.get(`https://api.paystack.co/bank/resolve?account_number=${account}&bank_code=${bankCode}`, {
+        headers: {
+          Authorization: 'Bearer sk_test_0880c1a9a5273248688de6d7bec39a89996d2254',
+        },
+      });
+      console.log("=======",response.data.data.account_name)
+      setLoader(false);
+      setBankName(response.data.data.account_name);
+      setPayments(response.data.data);
+    } catch (error) {
+      setLoader(false);
+    }
+  };
 
-  useEffect(() => {
-    const fetchPaymentHistory = async () => {
-      try {
-        const userData = JSON.parse(sessionStorage.getItem("userData"));
-        const response = await axios.get(`https://fintech-zukf.onrender.com/txn/user/${userData.email}`, {
-          headers: {
-            Authorization: 'Bearer nt',
-          },
-        });
-        setPayments(response.data.data);
-      } catch (error) {
-        console.error(error.message);
-        alert(error.message)
-      }
-    };
-    fetchPaymentHistory();
-  }, []);
+  const resolveAccount = async (account) => {
+    if (account.length === 10) {
+      setLoader(true);
+      console.log("account", account)
+      setAccountNumber(account);
+      fetchPayments(account);
 
-  const handleSubmit = async (event) => {
+    }
+  
+  };
+
+ const handleSubmit = async (event) => {
     event.preventDefault();
+    setLoader(true)
     try {
       const userData = JSON.parse(sessionStorage.getItem("userData"));
 
       const response = await axios.post(`https://fintech-zukf.onrender.com/txn/create`,{
-        recipient_name: accountNumber,
+        bankCode: bankCode,
+        recipientName: payments.account_name,
         accountNumber: accountNumber,
-
-        // customer_email: userData.email,
+        email: userData.email,
         bankName: bankName,
         narration: narration,
         amount: amount
@@ -89,11 +88,11 @@ function App() {
           Authorization: 'Bearer nt',
         },
       });
-      
-      setPayments([...payments, response.data.data]);
+      setLoader(false);
       alert(response.data.message);
       window.location = "../home";
     } catch (error) {
+      setLoader(false);
       console.error(error.message);
       alert(error.message)
     }
@@ -110,7 +109,7 @@ function App() {
         <form onSubmit={handleSubmit}>
           <div className="form-field">
             <label htmlFor="bankCode">Bank Name</label>
-            <select id="bankCode" name="bankCode" value={bankCode} onChange={(e) => setBankCode(e.target.value)}>
+            <select id="bankCode" name="bankCode" value={bankCode} onChange={(e) => getBankDetails(e.target.value)}>
               <option value="">Select Bank Name</option>
               {banks.map((bank) => (
                 <option key={bank.code} value={bank.code}>
@@ -120,8 +119,8 @@ function App() {
             </select>
           </div>
           <div className="form-field">
-            <label htmlFor="accountNumber">Account Number</label>
-            <input type="text" id="accountNumber" name="accountNumber" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
+          <label htmlFor="account">Account Number</label>
+          <input type="text" id="account" onChange={(event) => resolveAccount(event.target.value)} placeholder='Ex. 3105467845' />
           </div>
           <div className="form-field">
             {/* <button type="submit" onClick={resolveAccount}>
@@ -130,7 +129,7 @@ function App() {
           </div>
           {bankName && (
             <div className="form-field">
-              <label htmlFor="bankName">Bank Name</label>
+              <label htmlFor="bankName">Account Name</label>
               <input type="text" id="bankName" name="bankName" value={bankName} readOnly />
             </div>
           )}
@@ -147,7 +146,7 @@ function App() {
           </div>
         </form>
       </main>
-      <div className="payment-history">
+      {/* <div className="payment-history">
         <h2>Payment History</h2>
         <table>
           <thead>
@@ -160,7 +159,7 @@ function App() {
             </tr>
           </thead>
           <tbody>
-            {payments.map((payment) => (
+            {payments && payments?.map((payment) => (
               <tr key={payment.id}>
                 <td>{payment.recipient_name}</td>
                 <td>{payment.accountNumber}</td>
@@ -171,7 +170,10 @@ function App() {
             ))}
           </tbody>
         </table>
-      </div>
+      </div> */}
+      {
+      isLoader === true ? <Loader /> : ""
+     }
     </div>
   )};
 
